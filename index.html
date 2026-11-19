@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Monev KPI OSL - PT Pegadaian CP Pamanukan</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --peg-green: #007A33;
+      --peg-dark: #004D20;
+      --peg-gold: #D4AF37;
+    }
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #f3f6f4; }
+    .bg-peg { background: linear-gradient(135deg, #004D20 0%, #007A33 100%); }
+    .tab-active { background: #007A33; color: #fff; font-weight: 700; }
+    .cell-edit { background: #fffbeb; border: 1px dashed #d97706; border-radius: 4px; padding: 2px 4px; width: 115px; text-align: right; font-size: 12px; }
+    .badge-green { background: #dcfce7; color: #166534; font-weight: 700; }
+    .badge-yellow { background: #fef9c3; color: #854d0e; font-weight: 700; }
+    .badge-red { background: #fee2e2; color: #991b1b; font-weight: 700; }
+    table th { white-space: nowrap; }
+    table td { white-space: nowrap; }
+  </style>
+</head>
+<body class="text-slate-800">
+
+  <!-- HEADER -->
+  <header class="bg-peg text-white shadow-lg sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="px-2 py-0.5 text-xs font-bold rounded bg-amber-400 text-slate-900">CP PAMANUKAN</span>
+          <span id="tglBadge" class="text-xs text-emerald-100">Update Data: 12/10/2026</span>
+        </div>
+        <h1 class="text-xl md:text-2xl font-extrabold tracking-tight mt-1">Dashboard Monev KPI & Kinerja OSL 2026</h1>
+        <p class="text-xs text-emerald-100">Target 2026 Terkunci Sesuai Template • Auto-Kalkulasi MtD, YtD, YoY & ACHV</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <label class="cursor-pointer bg-amber-400 hover:bg-amber-300 text-slate-900 font-bold text-xs px-3 py-2 rounded-lg shadow transition">
+          📂 Upload Excel (.xlsx/.csv)
+          <input type="file" id="excelInput" accept=".xlsx,.xls,.csv" class="hidden" />
+        </label>
+        <button onclick="toggleEditMode()" id="btnEdit" class="bg-white/15 hover:bg-white/25 border border-white/30 text-white font-semibold text-xs px-3 py-2 rounded-lg transition">
+          ✏️ Mode Edit Angka
+        </button>
+        <button onclick="copyWhatsApp()" class="bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-xs px-3 py-2 rounded-lg shadow transition">
+          📲 Copy Ringkasan WA
+        </button>
+        <button onclick="resetDefault()" class="bg-red-600/80 hover:bg-red-600 text-white font-semibold text-xs px-3 py-2 rounded-lg transition">
+          ↺ Reset Default
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- KPI CARDS -->
+    <section id="kpiCards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"></section>
+
+    <!-- NAVIGATION TABS -->
+    <div class="flex flex-wrap gap-2 bg-white p-2 rounded-xl shadow-sm border border-slate-200">
+      <button onclick="switchTab('overview')" id="tab-overview" class="tab-active px-4 py-2 rounded-lg text-sm transition">📊 Ringkasan 4 Tabel Outlet</button>
+      <button onclick="switchTab('produk')" id="tab-produk" class="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition">📦 Kinerja OSL Per Produk</button>
+      <button onclick="switchTab('strategi')" id="tab-strategi" class="px-4 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 transition">🎯 Analisa, 4DX & Fishbone</button>
+    </div>
+
+    <!-- TAB 1: OVERVIEW (4 TABEL SESUAI TEMPLATE 2) -->
+    <section id="panel-overview" class="space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+          <h3 class="font-bold text-sm text-slate-700 mb-3">Pencapaian (ACHV %) per Outlet — Gross vs Rata-Rata</h3>
+          <canvas id="chartOutlet" height="160"></canvas>
+        </div>
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+          <h3 class="font-bold text-sm text-slate-700 mb-3">Komposisi Posisi OSL Konsolidasi Per Kategori (Miliar Rp)</h3>
+          <canvas id="chartKategori" height="160"></canvas>
+        </div>
+      </div>
+
+      <div id="outletTablesContainer" class="space-y-6"></div>
+    </section>
+
+    <!-- TAB 2: PER PRODUK (SESUAI TEMPLATE 1) -->
+    <section id="panel-produk" class="hidden space-y-4">
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div>
+          <h2 class="font-bold text-base text-emerald-900">Kinerja OSL Posisi Per Produk</h2>
+          <p class="text-xs text-slate-500">Target 2026 terkunci. Aktifkan "Mode Edit Angka" atau upload Excel untuk memperbarui kolom realisasi.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <label class="text-xs font-semibold text-slate-600">Pilih Unit:</label>
+          <select id="unitFilter" onchange="renderProdukTable()" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-semibold bg-slate-50">
+            <option value="KONSOLIDASI">CP PAMANUKAN KONSOLIDASI</option>
+          </select>
+        </div>
+      </div>
+      <div id="produkTableContainer" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto"></div>
+    </section>
+
+    <!-- TAB 3: STRATEGI 4DX & FISHBONE -->
+    <section id="panel-strategi" class="hidden space-y-5">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-emerald-700">
+          <h3 class="font-extrabold text-emerald-900 text-base mb-2">🎯 4DX — Wildly Important Goals (WIG)</h3>
+          <ul class="text-sm space-y-2 list-disc pl-5 text-slate-700">
+            <li><strong>WIG 1 (Gross Posisi):</strong> Naikkan ACHV OSL Gross Posisi dari <strong>78,24%</strong> menjadi <strong>≥100% (Rp340,06 M)</strong> per 31 Des 2026.</li>
+            <li><strong>WIG 2 (Non-Gadai):</strong> Naikkan ACHV OSL Posisi Non-Gadai dari <strong>58,91%</strong> menjadi <strong>≥85% (Rp12,61 M)</strong> melalui Kupedes, Arrum Mikro, Kreasi & reaktivasi Amanah.</li>
+          </ul>
+        </div>
+        <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-amber-500">
+          <h3 class="font-extrabold text-amber-900 text-base mb-2">⚡ Lead Measures (Pengungkit Harian)</h3>
+          <ul class="text-sm space-y-2 list-disc pl-5 text-slate-700">
+            <li><strong>CRO:</strong> 15 kunjungan kanvasing UMKM/Pasar per hari + 10 aktivasi TRING!/Tabungan Emas + 2 kontak dealer Amanah/minggu.</li>
+            <li><strong>Kasir/Penaksir:</strong> 20 tele-call retensi H-15 jatuh tempo KCA/hari & 100% cross-sell Tabungan Emas.</li>
+            <li><strong>Admin Kredit/UPC:</strong> SLA Non-Gadai ≤3 hari kerja & WIG Session setiap Jumat sore (30 menit).</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+        <h3 class="font-extrabold text-slate-800 text-base mb-3">🐟 Fishbone 7 Tulang Layanan & Saran Potensi Wilayah (82.450 Jiwa Usia Produktif)</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <div class="p-3 rounded-lg bg-slate-50 border"><strong>1. People:</strong> Pisahkan target kanvasing Non-Gadai CRO dari antrean Gadai di loket.</div>
+          <div class="p-3 rounded-lg bg-slate-50 border"><strong>2. Process:</strong> Terapkan SOP *retention call* H-15 KCA & pangkas SLA Kupedes/Kreasi ≤3 hari.</div>
+          <div class="p-3 rounded-lg bg-slate-50 border"><strong>3. Product:</strong> Bundling Arrum Haji + Arrum Safar; aktifkan PKS dealer lokal untuk Amanah.</div>
+          <div class="p-3 rounded-lg bg-slate-50 border"><strong>4. Place/Channel:</strong> Grebag Pasar Ciasem, Pasar Wates & sinergi referral CoLo BRI Bojongkeding.</div>
+          <div class="p-3 rounded-lg bg-slate-50 border"><strong>5. Promotion:</strong> Edukasi 4 kecamatan (Pamanukan, Binong, Ciasem, Pusakanagara) untuk produk Non-Gadai.</div>
+          <div class="p-3 rounded-lg bg-slate-50 border"><strong>6. Price/Policy:</strong> Maksimalkan *repeat order* nasabah lunas lancar dengan proses cepat.</div>
+          <div class="p-3 rounded-lg bg-emerald-50 border border-emerald-200 md:col-span-3"><strong>7. Platform (TRING!):</strong> Jadikan aktivasi TRING! & Tabungan Emas sebagai *funnel* utama 82.450 penduduk usia produktif untuk konversi Cicil Emas (khususnya mengejar gap UPC Rancasari).</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // =========================================================================
+    // DATA DEFAULT SESUAI TEMPLATE (TARGET 2026 TERKUNCI)
+    // =========================================================================
+    const DEFAULT_DATA = {
+      dates: { ytdBase: "31/12/2025", yoyBase: "12/10/2025", mtdBase: "31/08/2026", current: "12/10/2026" },
+      outletTables: [
+        {
+          id: "gross",
+          title: "OSL GROSS POSISI",
+          rows: [
+            { outlet: "13309:CP PAMANUKAN", target: 99553631954, d1: 98830346518, d2: 83539404206, d3: 90002441395, cur: 91888643861 },
+            { outlet: "13311:UPC PUSAKA RATU", target: 46065636096, d1: 44036817404, d2: 35594207159, d3: 36447038715, cur: 36241869784 },
+            { outlet: "13312:UPC PASAR WATES", target: 56416341480, d1: 50583483449, d2: 40106368588, d3: 46369181270, cur: 44492593582 },
+            { outlet: "13313:UPC RANCASARI", target: 93007557182, d1: 90216755164, d2: 60287568804, d3: 57072909498, cur: 58036017033 },
+            { outlet: "13314:UPC CIASEM", target: 39650197015, d1: 36314724781, d2: 24133526057, d3: 31303483247, cur: 30918470989 },
+            { outlet: "17457:BRI UNIT BOJONGKEDING", target: 5361702218, d1: 4749676259, d2: 3805146689, d3: 4644014343, cur: 4482849081 }
+          ]
+        },
+        {
+          id: "avg_gadai",
+          title: "OSL AKTIF RATA-RATA GADAI",
+          rows: [
+            { outlet: "13309:CP PAMANUKAN", target: 81760758394, d1: 75629595245, d2: 73976083082, d3: 84687544102, cur: 84543244880 },
+            { outlet: "13311:UPC PUSAKA RATU", target: 35945130370, d1: 28250631865, d2: 25313356114, d3: 38804849343, cur: 38558563859 },
+            { outlet: "13312:UPC PASAR WATES", target: 45334116093, d1: 30691931741, d2: 27799589693, d3: 51081154963, cur: 50560829301 },
+            { outlet: "13313:UPC RANCASARI", target: 62830582898, d1: 57775154303, d2: 52943173364, d3: 89594259589, cur: 88035376900 },
+            { outlet: "13314:UPC CIASEM", target: 33122039610, d1: 18861574473, d2: 15638466802, d3: 33099853421, cur: 32914087554 },
+            { outlet: "17457:BRI UNIT BOJONGKEDING", target: 4297775330, d1: 1347113257, d2: 516800834, d3: 5029921642, cur: 4997730323 }
+          ]
+        },
+        {
+          id: "avg_nongadai",
+          title: "OSL AKTIF RATA-RATA NON GADAI",
+          rows: [
+            { outlet: "13309:CP PAMANUKAN", target: 6760973425, d1: 11018253219, d2: 12460042585, d3: 4088024012, cur: 4050048929 },
+            { outlet: "13311:UPC PUSAKA RATU", target: 3225257504, d1: 4319080394, d2: 4755860397, d3: 2045986897, cur: 2026626897 },
+            { outlet: "13312:UPC PASAR WATES", target: 2820941173, d1: 3903980659, d2: 4379456642, d3: 2488679786, cur: 2522538140 },
+            { outlet: "13313:UPC RANCASARI", target: 1402269293, d1: 2584368120, d2: 2967592592, d3: 781095179, cur: 764859622 },
+            { outlet: "13314:UPC CIASEM", target: 1321336605, d1: 2057387041, d2: 2318125486, d3: 658141851, cur: 653572266 },
+            { outlet: "17457:BRI UNIT BOJONGKEDING", target: 0, d1: 0, d2: 0, d3: 0, cur: 0 }
+          ]
+        },
+        {
+          id: "avg_emas",
+          title: "OSL AKTIF RATA-RATA EMAS",
+          rows: [
+            { outlet: "13309:CP PAMANUKAN", target: 4312503623, d1: 3256933170, d2: 2887695306, d3: 4403656978, cur: 4444322783 },
+            { outlet: "13311:UPC PUSAKA RATU", target: 3746588264, d1: 2008289446, d2: 1865850917, d3: 3411478970, cur: 3394165827 },
+            { outlet: "13312:UPC PASAR WATES", target: 4133695916, d1: 2667290984, d2: 2316201710, d3: 3732473819, cur: 3662233341 },
+            { outlet: "13313:UPC RANCASARI", target: 20810208856, d1: 11262236562, d2: 9477477269, d3: 15564615367, cur: 15478121330 },
+            { outlet: "13314:UPC CIASEM", target: 2640169914, d1: 2203571635, d2: 2162910311, d3: 3413609828, cur: 3405864349 },
+            { outlet: "17457:BRI UNIT BOJONGKEDING", target: 726005697, d1: 135118286, d2: 62554613, d3: 782370378, cur: 786978198 }
+          ]
+        }
+      ],
+      produkKonsolidasi: [
+        { kat: "GADAI", produk: "ARRUM HAJI", target: 720430391, d1: 493034132, d2: 463775430, d3: 1115936662, cur: 1097392121 },
+        { kat: "GADAI", produk: "ARRUM SAFAR", target: 41033409, d1: 0, d2: 0, d3: 0, cur: 0 },
+        { kat: "GADAI", produk: "KCA", target: 282047161649, d1: 264547795296, d2: 205727925296, d3: 221005449608, cur: 222890459608 },
+        { kat: "GADAI", produk: "KRASIDA", target: 3200837587, d1: 3612185772, d2: 3614427178, d3: 4139946200, cur: 4045108900 },
+        { kat: "NON GADAI", produk: "AMANAH", target: 2057532562, d1: 214768145, d2: 304015537, d3: 108089969, cur: 107010060 },
+        { kat: "NON GADAI", produk: "ARRUM MIKRO", target: 803246428, d1: 338799020, d2: 312253862, d3: 613848788, cur: 592711504 },
+        { kat: "NON GADAI", produk: "KREASI", target: 1228418011, d1: 640648579, d2: 718557439, d3: 549368572, cur: 559014360 },
+        { kat: "NON GADAI", produk: "KRESNA", target: 3333190953, d1: 3251869953, d2: 3435524799, d3: 2607393162, cur: 2607393162 },
+        { kat: "NON GADAI", produk: "KUPEDES", target: 7413435938, d1: 6203666161, d2: 9228873927, d3: 4857005535, cur: 4874346535 },
+        { kat: "EMAS", produk: "EMAS", target: 42815600714, d1: 43896505181, d2: 21887582142, d3: 29771550541, cur: 28623761455 }
+      ]
+    };
+
+    let state = JSON.parse(localStorage.getItem("pegadaian_pamanukan_kpi_v2")) || structuredClone(DEFAULT_DATA);
+    let editMode = false;
+    let chartOutletInst = null, chartKatInst = null;
+
+    // UTILITAS FORMAT & RUMUS
+    const fmtRp = (n) => n ? Math.round(n).toLocaleString("id-ID") : "-";
+    const fmtM = (n) => "Rp" + (n / 1e9).toFixed(2).replace(".", ",") + " M";
+    const pct = (cur, base) => base > 0 ? ((cur - base) / base) * 100 : null;
+    const achv = (cur, target) => target > 0 ? (cur / target) * 100 : null;
+    const fmtPct = (v) => v === null ? "-" : (v > 0 ? "+" : "") + v.toFixed(2) + "%";
+    const fmtAchv = (v) => v === null ? "-" : v.toFixed(2) + "%";
+
+    function badgeClass(v, isAchv = false) {
+      if (v === null) return "text-slate-400";
+      if (isAchv) return v >= 100 ? "badge-green" : v >= 80 ? "badge-yellow" : "badge-red";
+      return v >= 0 ? "text-emerald-700 font-semibold" : "badge-red";
+    }
+
+    function saveState() {
+      localStorage.setItem("pegadaian_pamanukan_kpi_v2", JSON.stringify(state));
+    }
+
+    // RENDER KPI CARDS
+    function renderCards() {
+      const container = document.getElementById("kpiCards");
+      container.innerHTML = state.outletTables.map(t => {
+        const sumTarget = t.rows.reduce((a, r) => a + r.target, 0);
+        const sumCur = t.rows.reduce((a, r) => a + r.cur, 0);
+        const sumD3 = t.rows.reduce((a, r) => a + r.d3, 0);
+        const aVal = achv(sumCur, sumTarget);
+        const mVal = pct(sumCur, sumD3);
+        const color = aVal >= 100 ? "border-emerald-600" : aVal >= 80 ? "border-amber-500" : "border-red-600";
+        return `
+          <div class="bg-white p-4 rounded-xl shadow-sm border-t-4 ${color}">
+            <div class="text-xs font-bold text-slate-500 uppercase">${t.title}</div>
+            <div class="text-2xl font-extrabold text-slate-800 mt-1">${fmtM(sumCur)}</div>
+            <div class="text-xs text-slate-500 mt-0.5">Target: ${fmtM(sumTarget)}</div>
+            <div class="flex items-center justify-between mt-3 pt-2 border-t border-slate-100 text-xs">
+              <span class="px-2 py-0.5 rounded ${badgeClass(aVal, true)}">ACHV ${fmtAchv(aVal)}</span>
+              <span class="px-2 py-0.5 rounded ${badgeClass(mVal, false)}">MtD ${fmtPct(mVal)}</span>
+            </div>
+          </div>`;
+      }).join("");
+    }
+
+    // RENDER 4 TABEL OUTLET
+    function renderOutletTables() {
+      const container = document.getElementById("outletTablesContainer");
+      const d = state.dates;
+      container.innerHTML = state.outletTables.map((t, tIdx) => {
+        const tot = t.rows.reduce((acc, r) => ({
+          target: acc.target + r.target, d1: acc.d1 + r.d1, d2: acc.d2 + r.d2, d3: acc.d3 + r.d3, cur: acc.cur + r.cur
+        }), { target: 0, d1: 0, d2: 0, d3: 0, cur: 0 });
+
+        const rowsHtml = t.rows.map((r, rIdx) => {
+          const m = pct(r.cur, r.d3), y = pct(r.cur, r.d1), yoy = pct(r.cur, r.d2), a = achv(r.cur, r.target);
+          const cell = (field, val) => editMode
+            ? `<input type="number" class="cell-edit" value="${val}" onchange="updateOutletVal(${tIdx},${rIdx},'${field}',this.value)" />`
+            : fmtRp(val);
+          return `
+            <tr class="border-b border-slate-100 hover:bg-emerald-50/40 text-xs">
+              <td class="px-3 py-2 font-semibold text-slate-800">${r.outlet}</td>
+              <td class="px-3 py-2 text-right font-semibold bg-slate-50 text-slate-700">${fmtRp(r.target)}</td>
+              <td class="px-3 py-2 text-right">${cell('d1', r.d1)}</td>
+              <td class="px-3 py-2 text-right">${cell('d2', r.d2)}</td>
+              <td class="px-3 py-2 text-right">${cell('d3', r.d3)}</td>
+              <td class="px-3 py-2 text-right font-bold text-emerald-900">${cell('cur', r.cur)}</td>
+              <td class="px-3 py-2 text-right ${badgeClass(m)}">${fmtPct(m)}</td>
+              <td class="px-3 py-2 text-right ${badgeClass(y)}">${fmtPct(y)}</td>
+              <td class="px-3 py-2 text-right ${badgeClass(yoy)}">${fmtPct(yoy)}</td>
+              <td class="px-3 py-2 text-right ${badgeClass(a, true)}">${fmtAchv(a)}</td>
+            </tr>`;
+        }).join("");
+
+        return `
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+            <div class="bg-emerald-800 text-white px-4 py-2.5 font-bold text-sm flex justify-between items-center">
+              <span>${t.title}</span>
+              <span class="text-xs font-normal text-emerald-200">Target 2026 Terkunci</span>
+            </div>
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-emerald-700 text-white text-xs">
+                  <th class="px-3 py-2">OUTLET</th>
+                  <th class="px-3 py-2 text-right">TARGET 2026 🔒</th>
+                  <th class="px-3 py-2 text-right">${d.ytdBase}</th>
+                  <th class="px-3 py-2 text-right">${d.yoyBase}</th>
+                  <th class="px-3 py-2 text-right">${d.mtdBase}</th>
+                  <th class="px-3 py-2 text-right">${d.current}</th>
+                  <th class="px-3 py-2 text-right">MtD</th>
+                  <th class="px-3 py-2 text-right">YtD</th>
+                  <th class="px-3 py-2 text-right">YoY</th>
+                  <th class="px-3 py-2 text-right">ACHV</th>
+                </tr>
+              </thead>
+              <tbody>${rowsHtml}</tbody>
+              <tfoot>
+                <tr class="bg-emerald-900 text-white font-bold text-xs">
+                  <td class="px-3 py-2.5">PAMANUKAN TOTAL</td>
+                  <td class="px-3 py-2.5 text-right">${fmtRp(tot.target)}</td>
+                  <td class="px-3 py-2.5 text-right">${fmtRp(tot.d1)}</td>
+                  <td class="px-3 py-2.5 text-right">${fmtRp(tot.d2)}</td>
+                  <td class="px-3 py-2.5 text-right">${fmtRp(tot.d3)}</td>
+                  <td class="px-3 py-2.5 text-right">${fmtRp(tot.cur)}</td>
+                  <td class="px-3 py-2.5 text-right">${fmtPct(pct(tot.cur, tot.d3))}</td>
+                  <td class="px-3 py-2.5 text-right">${fmtPct(pct(tot.cur, tot.d1))}</td>
+                  <td class="px-3 py-2.5 text-right">${fmtPct(pct(tot.cur, tot.d2))}</td>
+                  <td class="px-3 py-2.5 text-right bg-amber-400 text-slate-900">${fmtAchv(achv(tot.cur, tot.target))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>`;
+      }).join("");
+    }
+
+    // RENDER TABEL PER PRODUK
+    function renderProdukTable() {
+      const container = document.getElementById("produkTableContainer");
+      const d = state.dates;
+      const rows = state.produkKonsolidasi;
+      const categories = ["GADAI", "NON GADAI", "EMAS"];
+      let html = `
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="bg-emerald-800 text-white">
+              <th class="px-3 py-2.5">KATEGORI</th>
+              <th class="px-3 py-2.5">PRODUK</th>
+              <th class="px-3 py-2.5 text-right">TARGET 2026 🔒</th>
+              <th class="px-3 py-2.5 text-right">${d.ytdBase}</th>
+              <th class="px-3 py-2.5 text-right">${d.yoyBase}</th>
+              <th class="px-3 py-2.5 text-right">${d.mtdBase}</th>
+              <th class="px-3 py-2.5 text-right">${d.current}</th>
+              <th class="px-3 py-2.5 text-right">MtD</th>
+              <th class="px-3 py-2.5 text-right">YtD</th>
+              <th class="px-3 py-2.5 text-right">YoY</th>
+              <th class="px-3 py-2.5 text-right">ACHV</th>
+            </tr>
+          </thead><tbody>`;
+
+      let grand = { target: 0, d1: 0, d2: 0, d3: 0, cur: 0 };
+
+      categories.forEach(cat => {
+        const subRows = rows.map((r, i) => ({ ...r, idx: i })).filter(r => r.kat === cat);
+        let sub = { target: 0, d1: 0, d2: 0, d3: 0, cur: 0 };
+
+        subRows.forEach(r => {
+          sub.target += r.target; sub.d1 += r.d1; sub.d2 += r.d2; sub.d3 += r.d3; sub.cur += r.cur;
+          const m = pct(r.cur, r.d3), y = pct(r.cur, r.d1), yoy = pct(r.cur, r.d2), a = achv(r.cur, r.target);
+          const cell = (field, val) => editMode
+            ? `<input type="number" class="cell-edit" value="${val}" onchange="updateProdukVal(${r.idx},'${field}',this.value)" />`
+            : fmtRp(val);
+          html += `
+            <tr class="border-b border-slate-100 hover:bg-emerald-50/40">
+              <td class="px-3 py-2 text-slate-500 font-semibold">${r.kat}</td>
+              <td class="px-3 py-2 font-bold text-slate-800">${r.produk}</td>
+              <td class="px-3 py-2 text-right bg-slate-50 font-semibold">${fmtRp(r.target)}</td>
+              <td class="px-3 py-2 text-right">${cell('d1', r.d1)}</td>
+              <td class="px-3 py-2 text-right">${cell('d2', r.d2)}</td>
+              <td class="px-3 py-2 text-right">${cell('d3', r.d3)}</td>
+              <td class="px-3 py-2 text-right font-bold text-emerald-900">${cell('cur', r.cur)}</td>
+              <td class="px-3 py-2 text-right ${badgeClass(m)}">${fmtPct(m)}</td>
+              <td class="px-3 py-2 text-right ${badgeClass(y)}">${fmtPct(y)}</td>
+              <td class="px-3 py-2 text-right ${badgeClass(yoy)}">${fmtPct(yoy)}</td>
+              <td class="px-3 py-2 text-right ${badgeClass(a, true)}">${fmtAchv(a)}</td>
+            </tr>`;
+        });
+
+        grand.target += sub.target; grand.d1 += sub.d1; grand.d2 += sub.d2; grand.d3 += sub.d3; grand.cur += sub.cur;
+
+        if (cat !== "EMAS") {
+          html += `
+            <tr class="bg-emerald-100/80 font-bold text-emerald-950 border-b border-emerald-200">
+              <td colspan="2" class="px-3 py-2">SUBTOTAL ${cat}</td>
+              <td class="px-3 py-2 text-right">${fmtRp(sub.target)}</td>
+              <td class="px-3 py-2 text-right">${fmtRp(sub.d1)}</td>
+              <td class="px-3 py-2 text-right">${fmtRp(sub.d2)}</td>
+              <td class="px-3 py-2 text-right">${fmtRp(sub.d3)}</td>
+              <td class="px-3 py-2 text-right">${fmtRp(sub.cur)}</td>
+              <td class="px-3 py-2 text-right">${fmtPct(pct(sub.cur, sub.d3))}</td>
+              <td class="px-3 py-2 text-right">${fmtPct(pct(sub.cur, sub.d1))}</td>
+              <td class="px-3 py-2 text-right">${fmtPct(pct(sub.cur, sub.d2))}</td>
+              <td class="px-3 py-2 text-right">${fmtAchv(achv(sub.cur, sub.target))}</td>
+            </tr>`;
+        }
+      });
+
+      html += `
+          </tbody>
+          <tfoot>
+            <tr class="bg-emerald-900 text-white font-extrabold">
+              <td colspan="2" class="px-3 py-3">GRAND TOTAL KONSOLIDASI</td>
+              <td class="px-3 py-3 text-right">${fmtRp(grand.target)}</td>
+              <td class="px-3 py-3 text-right">${fmtRp(grand.d1)}</td>
+              <td class="px-3 py-3 text-right">${fmtRp(grand.d2)}</td>
+              <td class="px-3 py-3 text-right">${fmtRp(grand.d3)}</td>
+              <td class="px-3 py-3 text-right">${fmtRp(grand.cur)}</td>
+              <td class="px-3 py-3 text-right">${fmtPct(pct(grand.cur, grand.d3))}</td>
+              <td class="px-3 py-3 text-right">${fmtPct(pct(grand.cur, grand.d1))}</td>
+              <td class="px-3 py-3 text-right">${fmtPct(pct(grand.cur, grand.d2))}</td>
+              <td class="px-3 py-3 text-right bg-amber-400 text-slate-900">${fmtAchv(achv(grand.cur, grand.target))}</td>
+            </tr>
+          </tfoot>
+        </table>`;
+      container.innerHTML = html;
+    }
+
+    // CHARTS
+    function renderCharts() {
+      const gross = state.outletTables[0].rows;
+      const gadai = state.outletTables[1].rows;
+      const emas = state.outletTables[3].rows;
+      const labels = gross.map(r => r.outlet.split(":")[1] || r.outlet);
+
+      if (chartOutletInst) chartOutletInst.destroy();
+      chartOutletInst = new Chart(document.getElementById("chartOutlet"), {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [
+            { label: "Gross Posisi (%)", data: gross.map(r => +(achv(r.cur, r.target) || 0).toFixed(1)), backgroundColor: "#007A33" },
+            { label: "Rata2 Gadai (%)", data: gadai.map(r => +(achv(r.cur, r.target) || 0).toFixed(1)), backgroundColor: "#D4AF37" },
+            { label: "Rata2 Emas (%)", data: emas.map(r => +(achv(r.cur, r.target) || 0).toFixed(1)), backgroundColor: "#0ea5e9" }
+          ]
+        },
+        options: { responsive: true, plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true } } }
+      });
+
+      const sumByKat = (k) => state.produkKonsolidasi.filter(r => r.kat === k).reduce((a, r) => a + r.cur, 0) / 1e9;
+      if (chartKatInst) chartKatInst.destroy();
+      chartKatInst = new Chart(document.getElementById("chartKategori"), {
+        type: "doughnut",
+        data: {
+          labels: ["Gadai (M)", "Non Gadai (M)", "Emas (M)"],
+          datasets: [{ data: [+sumByKat("GADAI").toFixed(2), +sumByKat("NON GADAI").toFixed(2), +sumByKat("EMAS").toFixed(2)], backgroundColor: ["#007A33", "#dc2626", "#D4AF37"] }]
+        },
+        options: { responsive: true, plugins: { legend: { position: "bottom" } } }
+      });
+    }
+
+    // INTERAKSI EDIT & UPLOAD EXCEL
+    function updateOutletVal(tIdx, rIdx, field, val) {
+      state.outletTables[tIdx].rows[rIdx][field] = Number(val) || 0;
+      saveState(); renderAll();
+    }
+    function updateProdukVal(idx, field, val) {
+      state.produkKonsolidasi[idx][field] = Number(val) || 0;
+      saveState(); renderAll();
+    }
+    function toggleEditMode() {
+      editMode = !editMode;
+      const btn = document.getElementById("btnEdit");
+      btn.textContent = editMode ? "✅ Selesai Edit" : "✏️ Mode Edit Angka";
+      btn.classList.toggle("bg-amber-500", editMode);
+      renderAll();
+    }
+    function resetDefault() {
+      if (!confirm("Kembalikan semua angka ke data default template?")) return;
+      state = structuredClone(DEFAULT_DATA);
+      saveState(); renderAll();
+    }
+    function switchTab(tab) {
+      ["overview", "produk", "strategi"].forEach(t => {
+        document.getElementById("panel-" + t).classList.toggle("hidden", t !== tab);
+        document.getElementById("tab-" + t).classList.toggle("tab-active", t === tab);
+      });
+    }
+
+    // UPLOAD EXCEL: Mencocokkan nama Outlet/Produk secara otomatis tanpa mengubah Target 2026
+    document.getElementById("excelInput").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const wb = XLSX.read(evt.target.result, { type: "binary" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        let updated = 0;
+
+        rows.forEach(cols => {
+          if (!cols || cols.length < 6) return;
+          const key = String(cols[0] || cols[1] || "").trim().toUpperCase();
+          // Cocokkan ke Produk Konsolidasi (Target tetap terkunci)
+          state.produkKonsolidasi.forEach(p => {
+            if (key === p.produk) {
+              const vals = cols.slice(2).map(v => Number(String(v).replace(/[^0-9.-]/g, "")) || 0);
+              if (vals.length >= 5) { p.d1 = vals[1]; p.d2 = vals[2]; p.d3 = vals[3]; p.cur = vals[4]; updated++; }
+            }
+          });
+          // Cocokkan ke Tabel Gross Posisi
+          state.outletTables[0].rows.forEach(o => {
+            if (key.includes(o.outlet.split(":")[1])) {
+              const vals = cols.slice(1).map(v => Number(String(v).replace(/[^0-9.-]/g, "")) || 0);
+              if (vals.length >= 5) { o.d1 = vals[1]; o.d2 = vals[2]; o.d3 = vals[3]; o.cur = vals[4]; updated++; }
+            }
+          });
+        });
+
+        saveState(); renderAll();
+        alert(`File berhasil dibaca! ${updated} baris realisasi diperbarui (Target 2026 tetap terkunci).`);
+      };
+      reader.readAsBinaryString(file);
+    });
+
+    // COPY RINGKASAN WHATSAPP
+    function copyWhatsApp() {
+      const sumTable = (t) => {
+        const tg = t.rows.reduce((a, r) => a + r.target, 0);
+        const cur = t.rows.reduce((a, r) => a + r.cur, 0);
+        const d3 = t.rows.reduce((a, r) => a + r.d3, 0);
+        return `${fmtM(cur)} / ${fmtM(tg)} (*ACHV ${fmtAchv(achv(cur, tg))}* | MtD ${fmtPct(pct(cur, d3))})`;
+      };
+      const text = `*LAPORAN MONEV KPI OSL — CP PAMANUKAN*\nUpdate: ${state.dates.current}\n\n` +
+        `1. *OSL Gross Posisi:* ${sumTable(state.outletTables[0])}\n` +
+        `2. *Rata-Rata Gadai:* ${sumTable(state.outletTables[1])}\n` +
+        `3. *Rata-Rata Non-Gadai:* ${sumTable(state.outletTables[2])}\n` +
+        `4. *Rata-Rata Emas:* ${sumTable(state.outletTables[3])}\n\n` +
+        `*Fokus Eksekusi Hari Ini:*\n- Retensi KCA & percepatan Emas UPC Rancasari\n- Kanvasing Kupedes/Arrum Mikro & reaktivasi Amanah\n- Konversi TRING! & Tabungan Emas di 4 Kecamatan.`;
+      navigator.clipboard.writeText(text).then(() => alert("Ringkasan KPI berhasil disalin! Siap paste ke WhatsApp."));
+    }
+
+    function renderAll() {
+      renderCards();
+      renderOutletTables();
+      renderProdukTable();
+      renderCharts();
+    }
+
+    renderAll();
+  </script>
+</body>
+</html>
